@@ -1,0 +1,49 @@
+name: Build RAMD Docs development package
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ pkg-config libgtk-3-dev libjson-glib-dev libreofficekit-dev liblibreofficekitgtk libreoffice-writer libreoffice-gtk3 xvfb xauth fonts-liberation poppler-utils desktop-file-utils
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build --parallel 2
+          desktop-file-validate packaging/ramd-docs.desktop
+      - name: Document engine roundtrip
+        run: |
+          SAL_USE_VCLPLUGIN=svp build/engine-check /usr/lib/libreoffice/program "file:///tmp/ramd-docs-engine-profile" "$PWD/build/roundtrip"
+          python3 tests/check_outputs.py build/roundtrip
+          pdftotext build/roundtrip/roundtrip.pdf build/roundtrip/pdf-text.txt
+          grep -q RAMD_ROUNDTRIP_2026 build/roundtrip/pdf-text.txt
+      - name: Desktop launch
+        run: |
+          set +e
+          xvfb-run -a timeout 12s build/ramd-docs > build/launch.log 2>&1
+          code=$?
+          set -e
+          cat build/launch.log
+          test "$code" -eq 124
+      - name: Development DEB
+        working-directory: build
+        run: cpack -G DEB -D CPACK_PACKAGE_FILE_NAME=ramd-docs-0.1.0-dev-mint22-amd64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RAMD-Docs-development-Mint22
+          path: build/*.deb
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: RAMD-Docs-validation
+          path: |
+            build/roundtrip/*
+            build/launch.log

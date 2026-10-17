@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=RAMD Docs
+Comment=Document writing workspace by RAMD Studios
+Exec=ramd-docs %f
+Icon=accessories-text-editor
+Terminal=false
+Categories=Office;WordProcessor;
+MimeType=application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/vnd.oasis.opendocument.text;
+StartupNotify=true
