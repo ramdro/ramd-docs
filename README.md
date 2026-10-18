@@ -26,19 +26,35 @@ editing widget for GTK3. It does not launch a separate Writer window.
 
 An existing document can be passed as the first command-line argument.
 
+## Install the development build (Mint 22 / Ubuntu 24.04, amd64)
+Open the latest successful run in this repository's Actions tab and download
+`RAMD-Docs-development-Mint22` under Artifacts. Extract the ZIP, open a terminal
+in that folder, and run:
+
+    sudo apt install ./ramd-docs-0.1.0-dev-mint22-amd64.deb
+
+Launch RAMD Docs from the applications menu or run `ramd-docs`.
+This is an early development build; use copies of important documents.
+
 ## GitHub build
-Upload the CONTENTS of this folder to a new ramd-docs repository, including
-.github/workflows/linux.yml. Actions compiles the editor, runs an engine
-DOCX/PDF roundtrip check, checks desktop startup, and produces a development
-DEB artifact. It does not publish a public release.
+Actions compiles the editor, tests the document engine and embedded editor,
+checks desktop startup, and creates a development DEB artifact. The package
+is also installed and launched as a regular user in a clean Ubuntu 24.04
+container to check its declared dependencies. It does not publish a public release.
 
 ## Current verification
-The build dependencies could not be installed in the development workspace
-because the environment denies the user/group changes required by apt.
-Compilation, engine tests and GUI interaction tests have NOT run yet.
-The included GitHub workflow must succeed before distributing the build.
-Engine checks do not prove the GTK save commands or every formatting action
-work; use the manual acceptance checklist too.
+GitHub Actions on Ubuntu 24.04 passed compilation and these automated checks:
+- Engine rendering, DOCX/PDF export and DOCX reopening.
+- Embedded editor insertion of formatted text, accents and a table.
+- Modified state, asynchronous DOCX save, PDF export without changing the
+  document path, reopening and selecting the saved text, and normal shutdown.
+- DOCX XML content/table checks and extracted PDF text checks.
+- Desktop startup and DEB creation.
+
+The editor test saves a screenshot in the RAMD-Docs-validation artifact.
+These checks do not cover every toolbar action, physical keyboard interaction,
+complex Word files or all desktop environments. Complete tests/ACCEPTANCE.md
+before treating this as an everyday writing application.
 
 ## Current limitations
 - Linux only in this first integration; Windows/Fedora packaging is pending.
@@ -49,8 +65,7 @@ work; use the manual acceptance checklist too.
 - Save from the close prompt saves first; close again after it finishes.
 - DOCX import/export uses LibreOffice filters. Layout can differ from Word,
   especially when the original fonts are unavailable.
-- Engine save commands, keyboard behavior and dialogs require integration
-  validation before this is suitable for everyday writing.
+- Keyboard behavior and dialogs still require manual acceptance testing.
 
 ## Architecture
 LOKDocView owns rendering and text interaction.
@@ -60,7 +75,7 @@ is shown only after the engine's command-result callback reports success.
 Documents are not converted to a limited HTML/QTextEdit representation.
 
 ## Licensing
-RAMD source in this archive is supplied for the project owner's development;
+RAMD source in this repository is supplied for the project owner's development;
 a public source license has not yet been chosen. LibreOfficeKit, GTK and
 their dependencies retain their own licenses. The current package depends
 on system-installed LibreOffice instead of redistributing it. Resolve
