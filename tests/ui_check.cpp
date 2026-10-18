@@ -13,6 +13,9 @@ struct Check {
         case 0:{
             const std::string html="<h1>RAMD Docs</h1><p>A real document workspace.</p><p>RAMD_EDITOR_TYPED — café, español.</p><table><tr><td>Project</td><td>Status</td></tr><tr><td>RAMD Docs</td><td>In development</td></tr></table>";
             if(!lok_doc_view_paste(LOK_DOC_VIEW(a->view),"text/html",html.c_str(),html.size())){g_printerr("HTML paste failed\n");std::exit(1);}
+            gtk_widget_grab_focus(a->view);
+            for(char ch:std::string("keyboard_input_ok "))
+                gtk_test_widget_send_key(a->view,gdk_unicode_to_keyval(ch),static_cast<GdkModifierType>(0));
             break;
         }
         case 1:
@@ -25,7 +28,7 @@ struct Check {
             if(a->filename!=c->dir+"/edited.docx"){g_printerr("PDF export changed editable document path\n");std::exit(1);}
             a->load(c->dir+"/edited.docx");break;
         case 4:
-            a->command(".uno:SelectAll");break;
+            a->action(".uno:SelectAll");break;
         case 5:{
             gchar *used=nullptr;gchar *text=lok_doc_view_copy_selection(LOK_DOC_VIEW(a->view),"text/plain;charset=utf-8",&used);
             bool ok=text&&std::string(text).find("RAMD_EDITOR_TYPED")!=std::string::npos;

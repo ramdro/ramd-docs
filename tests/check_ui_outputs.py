@@ -4,6 +4,7 @@ p=Path(sys.argv[1])
 with zipfile.ZipFile(p/'edited.docx') as z:
     doc=ET.fromstring(z.read('word/document.xml'))
     text=''.join(doc.itertext())
+    assert 'keyboard_input_ok' in text, 'Keyboard events did not reach the document'
     assert 'RAMD_EDITOR_TYPED' in text and 'café' in text and 'español' in text
     assert doc.find('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tbl') is not None
 assert (p/'edited.pdf').read_bytes().startswith(b'%PDF-')
