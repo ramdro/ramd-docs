@@ -8,6 +8,7 @@
 #include <utility>
 #include <cstdlib>
 #include <stdexcept>
+#include "process_exit.h"
 namespace fs = std::filesystem;
 using Fields = std::vector<std::pair<std::string,std::pair<std::string,std::string>>>;
 static std::string arguments(const Fields &fields) {
@@ -39,11 +40,12 @@ office:version="1.3" office:mimetype="application/vnd.oasis.opendocument.text">
 <office:body><office:text><text:p/></office:text></office:body></office:document>)";
 struct App {
     GtkWidget *window{},*view{},*status{},*heading{},*editorControls{},*search{};
-    bool ready=false,dirty=false,busy=false;
+    bool ready=false,dirty=false,busy=false,testing=false;
     std::string filename,pendingPath,pendingCommand,session;
     GtkAccelGroup *accels{};
     void message(const std::string &text){gtk_label_set_text(GTK_LABEL(status),text.c_str());}
     void error(const std::string &text){
+        if(testing){g_printerr("UI TEST FAILURE: %s\n",text.c_str());std::exit(1);}
         auto d=gtk_message_dialog_new(GTK_WINDOW(window),GTK_DIALOG_MODAL,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,"%s",text.c_str());
         gtk_dialog_run(GTK_DIALOG(d));gtk_widget_destroy(d);
     }
@@ -116,6 +118,11 @@ struct App {
         const std::string ext=fs::path(target).extension().string();
         // Legacy inputs are always saved as DOCX, never silently rewritten in a different format.
         if(!pdf&&ext!=".docx"&&ext!=".odt"){save(true,false);return;}
+        savePath(target,pdf);
+    }
+    void savePath(const std::string &target,bool pdf){
+        if(!ready||busy)return;
+        const auto ext=fs::path(target).extension().string();
         pendingCommand=pdf?".uno:SaveTo":".uno:SaveAs";pendingPath=target;
         const auto args=arguments({{"URL",{"string",uri(target)}},{"FilterName",{"string",pdf?"writer_pdf_Export":ext==".odt"?"writer8":"Office Open XML Text"}},{"Overwrite",{"boolean","true"}}});
         setBusy(true);message(pdf?"Exporting PDF…":"Saving document…");
@@ -222,8 +229,13 @@ button{border-radius:4px;padding:6px 10px;box-shadow:none}
         gtk_widget_show_all(window);
     }
 };
-int main(int argc,char **argv){
+#ifndef RAMD_DOCS_NO_MAIN
+int runApp(int argc,char **argv){
     gtk_init(&argc,&argv);g_set_application_name("RAMD Docs");
     try{App a;if(argc>1)a.load(fs::absolute(argv[1]).string());else a.newDocument();gtk_main();}
     catch(const std::exception &e){g_printerr("RAMD Docs: %s\n",e.what());return 1;}
+    return 0;
 }
+
+int main(int argc,char **argv){int status=runApp(argc,argv);finishProcess(status);}
+#endif

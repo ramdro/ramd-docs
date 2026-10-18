@@ -5,7 +5,8 @@
 #include <iostream>
 #include <memory>
 #include <vector>
-int main(int argc,char **argv){
+#include "../src/process_exit.h"
+int runCheck(int argc,char **argv){
     if(argc!=4){std::cerr<<"engine-check PROGRAM_DIR PROFILE_URL OUTPUT_DIR\n";return 2;}
     std::filesystem::create_directories(argv[3]);
     auto source=std::filesystem::absolute(std::filesystem::path(argv[3])/"fixture.fodt");
@@ -16,7 +17,7 @@ int main(int argc,char **argv){
     if(!document){std::cerr<<"Document load failed\n";return 1;}
     document->initializeForRendering();
     long width=0,height=0;document->getDocumentSize(&width,&height);
-    if(width<=0||height<=0)return 1;
+    if(width<=0||height<=0){std::cerr<<"Invalid document size\n";return 1;}
     std::vector<unsigned char> pixels(512*512*4);
     document->paintTile(pixels.data(),512,512,0,0,width,height);
     auto docx=std::filesystem::absolute(std::filesystem::path(argv[3])/"roundtrip.docx");
@@ -25,6 +26,9 @@ int main(int argc,char **argv){
     document.reset();document.reset(office->documentLoad(docx.c_str()));
     if(!document){std::cerr<<"DOCX reopen failed\n";return 1;}
     document->initializeForRendering();document->getDocumentSize(&width,&height);
-    if(width<=0||height<=0)return 1;
-    std::cout<<"PASS: engine load, paginated render, DOCX export/reopen, PDF export\n";
+    if(width<=0||height<=0){std::cerr<<"Invalid document size\n";return 1;}
+    std::cout<<"PASS: engine load, paginated render, DOCX export/reopen, PDF export"<<std::endl;
+    return 0;
 }
+
+int main(int argc,char **argv){int status=runCheck(argc,argv);finishProcess(status);}

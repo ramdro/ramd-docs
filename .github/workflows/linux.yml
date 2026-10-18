@@ -25,6 +25,12 @@ jobs:
           python3 tests/check_outputs.py build/roundtrip
           pdftotext build/roundtrip/roundtrip.pdf build/roundtrip/pdf-text.txt
           grep -q RAMD_ROUNDTRIP_2026 build/roundtrip/pdf-text.txt
+      - name: Editor integration
+        run: |
+          xvfb-run -a timeout 60s build/ui-check "$PWD/build/editor-check"
+          python3 tests/check_ui_outputs.py build/editor-check
+          pdftotext build/editor-check/edited.pdf build/editor-check/pdf-text.txt
+          grep -q RAMD_EDITOR_TYPED build/editor-check/pdf-text.txt
       - name: Desktop launch
         run: |
           set +e
@@ -47,3 +53,4 @@ jobs:
           path: |
             build/roundtrip/*
             build/launch.log
+            build/editor-check/*
