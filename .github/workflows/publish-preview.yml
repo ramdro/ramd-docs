@@ -39,4 +39,4 @@ jobs:
           cd package
           sha256sum *.deb > SHA256SUMS.txt
           cd ..
-          gh release create v0.2.0-dev package/*.deb package/SHA256SUMS.txt --target f2d5b8139f4bfa2d2f36ef731aefe3368b6fb033 --title 'RAMD Docs 0.2 — Development Preview' --prerelease --notes-file notes.md
+          gh release create v0.2.0-dev package/*.deb package/SHA256SUMS.txt --target "$GITHUB_SHA" --title 'RAMD Docs 0.2 — Development Preview' --prerelease --notes-file notes.md
