@@ -123,7 +123,7 @@ struct App {
     void savePath(const std::string &target,bool pdf){
         if(!ready||busy)return;
         const auto ext=fs::path(target).extension().string();
-        pendingCommand=pdf?".uno:SaveTo":".uno:SaveAs";pendingPath=target;
+        pendingCommand=pdf?".uno:ExportDirectToPDF":".uno:SaveAs";pendingPath=target;
         const auto args=arguments({{"URL",{"string",uri(target)}},{"FilterName",{"string",pdf?"writer_pdf_Export":ext==".odt"?"writer8":"Office Open XML Text"}},{"Overwrite",{"boolean","true"}}});
         setBusy(true);message(pdf?"Exporting PDF…":"Saving document…");
         lok_doc_view_post_command(LOK_DOC_VIEW(view),pendingCommand.c_str(),args.c_str(),true);
@@ -137,7 +137,7 @@ struct App {
         const char *name=json_object_has_member(obj,"commandName")?json_object_get_string_member(obj,"commandName"):"";
         if(a->pendingCommand==name){
             bool ok=json_object_has_member(obj,"success")&&json_object_get_boolean_member(obj,"success");
-            bool pdf=a->pendingCommand==".uno:SaveTo";
+            bool pdf=a->pendingCommand==".uno:ExportDirectToPDF";
             if(ok&&!pdf){a->filename=a->pendingPath;a->dirty=false;a->title();}
             a->pendingCommand.clear();a->pendingPath.clear();a->setBusy(false);
             if(ok)a->message(pdf?"PDF exported":"Document saved");
