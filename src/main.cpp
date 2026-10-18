@@ -40,6 +40,7 @@ office:version="1.3" office:mimetype="application/vnd.oasis.opendocument.text">
 <office:automatic-styles><style:page-layout style:name="A4"><style:page-layout-properties fo:page-width="21cm" fo:page-height="29.7cm" fo:margin="2.5cm"/></style:page-layout></office:automatic-styles>
 <office:master-styles><style:master-page style:name="Standard" style:page-layout-name="A4"/></office:master-styles>
 <office:body><office:text><text:p/></office:text></office:body></office:document>)";
+#include "extensions.h"
 struct App {
     GtkWidget *window{},*view{},*status{},*heading{},*editorControls{},*search{};
     bool ready=false,dirty=false,busy=false,testing=false,syncing=false;
@@ -96,7 +97,7 @@ struct App {
             if(!ok){a->error(err?err->message:"Could not open document.");g_clear_error(&err);a->message("Open failed. Choose another document.");return;}
             a->filename=a->pendingPath;a->pendingPath.clear();a->dirty=false;a->title();
             lok_doc_view_set_edit(LOK_DOC_VIEW(a->view),true);
-            a->message("Ready · Document tools work offline");gtk_widget_grab_focus(a->view);
+            a->message("Ready · Recovery copies every 2 minutes");gtk_widget_grab_focus(a->view);
           },this);
     }
     void newDocument(){
@@ -140,9 +141,11 @@ struct App {
         if(a->pendingCommand==name){
             bool ok=json_object_has_member(obj,"success")&&json_object_get_boolean_member(obj,"success");
             bool pdf=a->pendingCommand==".uno:ExportDirectToPDF";
-            if(ok&&!pdf){a->filename=a->pendingPath;a->dirty=false;a->title();}
+            bool wasCopy=a->copying;
+            if(wasCopy){a->filename=a->copySource;a->dirty=a->copyDirty;a->copying=false;a->title();}
+            else if(ok&&!pdf){a->filename=a->pendingPath;a->dirty=false;a->title();std::error_code ec;fs::remove(a->recoveryFile,ec);}
             a->pendingCommand.clear();a->pendingPath.clear();a->setBusy(false);
-            if(ok)a->message(pdf?"PDF exported":"Document saved");
+            if(ok)a->message(wasCopy?"Recovery copy saved · original document remains unsaved":pdf?"PDF exported":"Document saved");
             else{a->message("Save failed — your document remains open");a->error("The document engine could not save this file. Try Save As in a writable folder.");}
         }
         g_object_unref(parser);
@@ -192,6 +195,12 @@ struct App {
         else if(id=="close")gtk_window_close(GTK_WINDOW(window));
         else if(id=="find"){gtk_notebook_set_current_page(GTK_NOTEBOOK(tabs),0);gtk_widget_grab_focus(search);}
         else if(id=="table")tableDialog();
+        else if(id=="image")insertImage();
+        else if(id=="extensions")extensionManager();
+        else if(id=="build-extension")extensionBuilder();
+        else if(id=="recover")recoverDocument();
+        else if(id=="recovery-copy")recoveryCopy();
+        else if(id=="word-count")showWordCount();
         else if(id=="copy")clipboard(false);
         else if(id=="cut")clipboard(true);
         else if(id=="paste"){
@@ -202,12 +211,12 @@ struct App {
         else if(id=="zoom-in")gtk_range_set_value(GTK_RANGE(zoomControl),gtk_range_get_value(GTK_RANGE(zoomControl))+10);
         else if(id=="zoom-out")gtk_range_set_value(GTK_RANGE(zoomControl),gtk_range_get_value(GTK_RANGE(zoomControl))-10);
         else if(id=="zoom-reset")gtk_range_set_value(GTK_RANGE(zoomControl),100);
-        else if(id=="about")gtk_show_about_dialog(GTK_WINDOW(window),"program-name","RAMD Docs","version","0.2 Preview","logo-icon-name","ramd-docs","comments","A document workspace by RAMD Studios.\nPowered by LibreOfficeKit.\nDevelopment preview — no autosave yet.",nullptr);
+        else if(id=="about")gtk_show_about_dialog(GTK_WINDOW(window),"program-name","RAMD Docs","version","0.3 Preview","logo-icon-name","ramd-docs","comments","A document workspace by RAMD Studios.\nPowered by LibreOfficeKit.\nDevelopment preview with two-minute recovery copies.",nullptr);
         else command(id);
     }
     void bindAction(GtkWidget *w,const char *signal,const char *id,const char *shortcut=nullptr){
         g_object_set_data_full(G_OBJECT(w),"action",g_strdup(id),g_free);
-        g_signal_connect(w,signal,G_CALLBACK((+[](GtkWidget *w,gpointer p){static_cast<App*>(p)->action(static_cast<const char*>(g_object_get_data(G_OBJECT(w),"action")));})),this);
+        g_signal_connect(w,signal,G_CALLBACK((+[](GtkWidget *w,gpointer p){auto a=static_cast<App*>(p);try{a->action(static_cast<const char*>(g_object_get_data(G_OBJECT(w),"action")));}catch(const std::exception &e){a->error(e.what());}})),this);
         if(shortcut){guint key;GdkModifierType mods;gtk_accelerator_parse(shortcut,&key,&mods);gtk_widget_add_accelerator(w,signal,accels,key,mods,GTK_ACCEL_VISIBLE);}
     }
     GtkWidget *actionButton(GtkWidget *box,const char *icon,const char *label,const char *id,bool compact=false){
@@ -230,16 +239,97 @@ struct App {
     }
     GtkWidget *toolRow(GtkWidget *box){auto row=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,4);gtk_box_pack_start(GTK_BOX(box),row,false,false,0);return row;}
     GtkWidget *tab(const char *name){auto row=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,0);auto scroll=gtk_scrolled_window_new(nullptr,nullptr);gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll),GTK_POLICY_AUTOMATIC,GTK_POLICY_NEVER);gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(scroll),true);gtk_container_add(GTK_CONTAINER(scroll),row);gtk_notebook_append_page(GTK_NOTEBOOK(tabs),scroll,gtk_label_new(name));return row;}
-    ~App(){std::error_code ec;fs::remove_all(session,ec);}
+    std::vector<Extension> extensions;
+    fs::path extensionDir,recoveryDir,recoveryFile;
+    guint recoveryTimer=0;
+    bool copying=false,copyDirty=false,closeAfterSave=false;
+    std::string copySource,wordCount="Word count updates while you edit.";
+    GtkWidget *countLabel{};
+    void reloadExtensions(){
+        extensions=builtinExtensions();
+        for(auto &e:extensions)e.enabled=!fs::exists(extensionDir/(e.path+".disabled"));
+        for(const auto &entry:fs::directory_iterator(extensionDir))if(entry.path().extension()==".json"){
+            try{auto e=readExtension(entry.path());e.enabled=!fs::exists(e.path+".disabled");extensions.push_back(e);}catch(const std::exception &e){g_warning("Ignoring extension: %s",e.what());}
+        }
+    }
+    void insertExtension(size_t index){
+        if(index>=extensions.size()||!extensions[index].enabled||!ready||busy)return;
+        auto &e=extensions[index];std::string text=e.text;
+        if(e.kind=="date"){auto now=g_date_time_new_now_local();auto s=g_date_time_format(now,"%d %B %Y");text=s;g_free(s);g_date_time_unref(now);}
+        if(!lok_doc_view_paste(LOK_DOC_VIEW(view),"text/plain;charset=utf-8",text.c_str(),text.size())){error("The extension text could not be inserted.");return;}
+        gtk_widget_grab_focus(view);message("Inserted: "+e.name);
+    }
+    std::string pickFile(const char *title,const char *pattern,bool save=false,const char *folder=nullptr){
+        auto d=gtk_file_chooser_dialog_new(title,GTK_WINDOW(window),save?GTK_FILE_CHOOSER_ACTION_SAVE:GTK_FILE_CHOOSER_ACTION_OPEN,"Cancel",GTK_RESPONSE_CANCEL,save?"Save":"Open",GTK_RESPONSE_ACCEPT,nullptr);
+        if(save){gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(d),"My-extension.ramdext.json");gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(d),true);}
+        if(folder)gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(d),folder);
+        auto filter=gtk_file_filter_new();gtk_file_filter_set_name(filter,pattern);gtk_file_filter_add_pattern(filter,pattern);gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(d),filter);
+        std::string out;if(gtk_dialog_run(GTK_DIALOG(d))==GTK_RESPONSE_ACCEPT){auto f=gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(d));out=f?f:"";g_free(f);}gtk_widget_destroy(d);return out;
+    }
+    void installExtension(const std::string &path){
+        auto e=readExtension(path);gchar *hash=g_compute_checksum_for_string(G_CHECKSUM_SHA256,(e.name+e.text).c_str(),-1);auto dest=extensionDir/(std::string(hash)+".json");g_free(hash);
+        fs::copy_file(path,dest,fs::copy_options::overwrite_existing);reloadExtensions();
+    }
+    void extensionManager(){
+        for(;;){
+            reloadExtensions();auto d=gtk_dialog_new_with_buttons("Extensions",GTK_WINDOW(window),GTK_DIALOG_MODAL,"Close",GTK_RESPONSE_CLOSE,"Install…",1,"Enable / Disable",2,"Remove",3,"Insert",4,nullptr);
+            gtk_window_set_default_size(GTK_WINDOW(d),570,370);auto box=gtk_dialog_get_content_area(GTK_DIALOG(d));gtk_container_set_border_width(GTK_CONTAINER(box),20);
+            auto intro=gtk_label_new("Document tools and reusable text templates.\nInstalled extensions insert text only; they do not run code.");gtk_label_set_xalign(GTK_LABEL(intro),0);gtk_box_pack_start(GTK_BOX(box),intro,false,false,10);
+            auto list=gtk_combo_box_text_new();for(const auto &e:extensions){auto name=e.name+(e.builtin?" · Built in":" · Installed")+(e.enabled?"":" · Disabled");gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(list),name.c_str());}gtk_combo_box_set_active(GTK_COMBO_BOX(list),0);gtk_box_pack_start(GTK_BOX(box),list,false,false,8);
+            auto desc=gtk_label_new(extensions[0].description.c_str());gtk_label_set_line_wrap(GTK_LABEL(desc),true);gtk_label_set_xalign(GTK_LABEL(desc),0);gtk_box_pack_start(GTK_BOX(box),desc,true,true,12);
+            struct Context{App *app;GtkWidget *description;};Context ctx{this,desc};
+            g_signal_connect(list,"changed",G_CALLBACK((+[](GtkComboBox *combo,gpointer p){auto c=static_cast<Context*>(p);int n=gtk_combo_box_get_active(combo);if(n>=0)gtk_label_set_text(GTK_LABEL(c->description),c->app->extensions[n].description.c_str());})),&ctx);
+            gtk_widget_show_all(d);int response=gtk_dialog_run(GTK_DIALOG(d));int n=gtk_combo_box_get_active(GTK_COMBO_BOX(list));gtk_widget_destroy(d);
+            if(response==1){auto path=pickFile("Install text extension","*.json");if(!path.empty())try{installExtension(path);}catch(const std::exception &e){error(e.what());}}
+            else if(response==2&&n>=0){auto &e=extensions[n];auto disabled=e.builtin?extensionDir/(e.path+".disabled"):fs::path(e.path+".disabled");if(e.enabled)std::ofstream(disabled)<<"disabled";else fs::remove(disabled);}
+            else if(response==3&&n>=0){auto &e=extensions[n];if(e.builtin)message("Built-in extensions can be disabled, but not removed.");else{fs::remove(e.path);fs::remove(e.path+".disabled");}}
+            else if(response==4&&n>=0){if(!extensions[n].enabled){message("Enable this extension before using it.");continue;}insertExtension(n);break;}
+            else break;
+        }
+    }
+    void extensionBuilder(){
+        auto d=gtk_dialog_new_with_buttons("Build a text extension",GTK_WINDOW(window),GTK_DIALOG_MODAL,"Cancel",GTK_RESPONSE_CANCEL,"Save extension…",GTK_RESPONSE_ACCEPT,nullptr);gtk_window_set_default_size(GTK_WINDOW(d),600,480);
+        auto box=gtk_dialog_get_content_area(GTK_DIALOG(d));gtk_container_set_border_width(GTK_CONTAINER(box),20);
+        auto name=gtk_entry_new();gtk_entry_set_placeholder_text(GTK_ENTRY(name),"Extension name");gtk_entry_set_max_length(GTK_ENTRY(name),80);gtk_box_pack_start(GTK_BOX(box),name,false,false,6);
+        auto desc=gtk_entry_new();gtk_entry_set_placeholder_text(GTK_ENTRY(desc),"Short description");gtk_entry_set_max_length(GTK_ENTRY(desc),500);gtk_box_pack_start(GTK_BOX(box),desc,false,false,6);
+        auto note=gtk_label_new("Write the reusable text this extension will insert.");gtk_box_pack_start(GTK_BOX(box),note,false,false,8);
+        auto scroll=gtk_scrolled_window_new(nullptr,nullptr),editor=gtk_text_view_new();gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(editor),GTK_WRAP_WORD_CHAR);gtk_container_add(GTK_CONTAINER(scroll),editor);gtk_box_pack_start(GTK_BOX(box),scroll,true,true,6);
+        gtk_widget_show_all(d);
+        if(gtk_dialog_run(GTK_DIALOG(d))==GTK_RESPONSE_ACCEPT){
+            auto buf=gtk_text_view_get_buffer(GTK_TEXT_VIEW(editor));GtkTextIter start,end;gtk_text_buffer_get_bounds(buf,&start,&end);auto text=gtk_text_buffer_get_text(buf,&start,&end,false);
+            auto b=json_builder_new();json_builder_begin_object(b);for(auto item:std::vector<std::pair<const char*,const char*>>{{"format","ramd-docs-extension-1"},{"name",gtk_entry_get_text(GTK_ENTRY(name))},{"description",gtk_entry_get_text(GTK_ENTRY(desc))},{"text",text}}){json_builder_set_member_name(b,item.first);json_builder_add_string_value(b,item.second);}json_builder_end_object(b);auto node=json_builder_get_root(b);auto gen=json_generator_new();json_generator_set_root(gen,node);auto json=json_generator_to_data(gen,nullptr);
+            auto path=pickFile("Save extension","*.json",true);if(!path.empty()){std::ofstream file(path);file<<json;file.close();try{installExtension(path);message("Extension created and installed.");}catch(const std::exception &e){error(e.what());}}
+            g_free(text);g_free(json);json_node_free(node);g_object_unref(gen);g_object_unref(b);
+        }gtk_widget_destroy(d);
+    }
+    void recoveryCopy(){
+        if(!ready||busy||!dirty)return;
+        copying=true;copyDirty=dirty;copySource=filename;pendingPath=recoveryFile.string();pendingCommand=".uno:SaveAs";
+        auto args=arguments({{"URL",{"string",uri(pendingPath)}},{"FilterName",{"string","writer8"}},{"SaveTo",{"boolean","true"}},{"Overwrite",{"boolean","true"}}});
+        setBusy(true);message("Writing recovery copy…");lok_doc_view_post_command(LOK_DOC_VIEW(view),pendingCommand.c_str(),args.c_str(),true);
+    }
+    void recoverDocument(){
+        if(!canLeave())return;auto path=pickFile("Open a recovery copy","*.odt",false,recoveryDir.c_str());if(path.empty())return;dirty=false;load(path,true);
+    }
+    void insertImage(){
+        if(!ready||busy)return;auto path=pickFile("Insert image (PNG or JPEG)","*");if(path.empty())return;
+        GError *err=nullptr;auto image=gdk_pixbuf_new_from_file(path.c_str(),&err);if(!image){error(err?err->message:"Unsupported image.");g_clear_error(&err);return;}g_object_unref(image);
+        command(".uno:InsertGraphic",{{"FileName",{"string",uri(path)}},{"AsLink",{"boolean","false"}}});
+    }
+    void showWordCount(){auto d=gtk_message_dialog_new(GTK_WINDOW(window),GTK_DIALOG_MODAL,GTK_MESSAGE_INFO,GTK_BUTTONS_CLOSE,"%s",wordCount.c_str());gtk_window_set_title(GTK_WINDOW(d),"Word count");gtk_dialog_run(GTK_DIALOG(d));gtk_widget_destroy(d);}
+    ~App(){if(recoveryTimer)g_source_remove(recoveryTimer);std::error_code ec;fs::remove(recoveryFile,ec);fs::remove_all(session,ec);}
     App(){
         gchar *tmp=g_dir_make_tmp("ramd-docs-XXXXXX",nullptr);session=tmp?tmp:"";g_free(tmp);
         if(session.empty())throw std::runtime_error("Could not create working directory");
+        extensionDir=fs::path(g_get_user_data_dir())/"ramd-docs"/"extensions";recoveryDir=fs::path(g_get_user_data_dir())/"ramd-docs"/"recovery";
+        fs::create_directories(extensionDir);fs::create_directories(recoveryDir);recoveryFile=recoveryDir/(fs::path(session).filename().string()+".odt");reloadExtensions();
+        recoveryTimer=g_timeout_add_seconds(120,[](gpointer p)->gboolean{static_cast<App*>(p)->recoveryCopy();return G_SOURCE_CONTINUE;},this);
         window=gtk_window_new(GTK_WINDOW_TOPLEVEL);gtk_window_set_default_size(GTK_WINDOW(window),1200,850);
         gtk_window_set_title(GTK_WINDOW(window),"RAMD Docs");
         accels=gtk_accel_group_new();gtk_window_add_accel_group(GTK_WINDOW(window),accels);g_object_unref(accels);
         heading=gtk_header_bar_new();gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(heading),true);
         gtk_header_bar_set_title(GTK_HEADER_BAR(heading),"RAMD Docs");
-        gtk_header_bar_set_subtitle(GTK_HEADER_BAR(heading),"RAMD Docs · Preview 0.2");
+        gtk_header_bar_set_subtitle(GTK_HEADER_BAR(heading),"RAMD Docs · Preview 0.3");
         gtk_window_set_titlebar(GTK_WINDOW(window),heading);
         auto root=gtk_box_new(GTK_ORIENTATION_VERTICAL,0);gtk_container_add(GTK_CONTAINER(window),root);
         auto loader=gdk_pixbuf_loader_new();gdk_pixbuf_loader_write(loader,reinterpret_cast<const guchar*>(appIcon),strlen(appIcon),nullptr);gdk_pixbuf_loader_close(loader,nullptr);
@@ -253,11 +343,14 @@ struct App {
         auto exportBox=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,0);gtk_header_bar_pack_end(GTK_HEADER_BAR(heading),exportBox);
         actionButton(exportBox,"document-send-symbolic","Export PDF","pdf");
         auto menubar=gtk_menu_bar_new();gtk_widget_set_name(menubar,"menubar");gtk_box_pack_start(GTK_BOX(root),menubar,false,false,0);
-        auto file=menu(menubar,"_File");menuItem(file,"_New document","new","<Control>n");menuItem(file,"_Open…","open","<Control>o");menuItem(file,"_Save","save","<Control>s");menuItem(file,"Save _as…","save-as","<Control><Shift>s");menuItem(file,"Export _PDF…","pdf","<Control><Shift>e");menuItem(file,"_Close","close","<Control>w");
+        auto file=menu(menubar,"_File");menuItem(file,"_New document","new","<Control>n");menuItem(file,"_Open…","open","<Control>o");menuItem(file,"_Save","save","<Control>s");menuItem(file,"Save _as…","save-as","<Control><Shift>s");menuItem(file,"Export _PDF…","pdf","<Control><Shift>e");menuItem(file,"Open _recovery copy…","recover");menuItem(file,"Write recovery copy now","recovery-copy");menuItem(file,"_Close","close","<Control>w");
         auto edit=menu(menubar,"_Edit");menuItem(edit,"_Undo",".uno:Undo","<Control>z");menuItem(edit,"_Redo",".uno:Redo","<Control>y");menuItem(edit,"Cu_t text","cut");menuItem(edit,"_Copy text","copy");menuItem(edit,"_Paste text","paste");menuItem(edit,"Select _all",".uno:SelectAll","<Control>a");menuItem(edit,"_Find…","find","<Control>f");
         auto insert=menu(menubar,"_Insert");menuItem(insert,"_Table…","table");menuItem(insert,"_Page break",".uno:InsertPagebreak","<Control>Return");
+        menuItem(insert,"_Image…","image");menuItem(insert,"Page number field",".uno:InsertPageNumberField");
         auto format=menu(menubar,"F_ormat");menuItem(format,"_Bold",".uno:Bold","<Control>b");menuItem(format,"_Italic",".uno:Italic","<Control>i");menuItem(format,"_Underline",".uno:Underline","<Control>u");menuItem(format,"Clear direct formatting",".uno:ResetAttributes","<Control>m");
         auto vm=menu(menubar,"_View");menuItem(vm,"Zoom _in","zoom-in");menuItem(vm,"Zoom _out","zoom-out");menuItem(vm,"_Actual size","zoom-reset");
+        auto layout=menu(menubar,"_Layout");menuItem(layout,"Toggle portrait / landscape",".uno:ToggleOrientation");
+        auto toolsMenu=menu(menubar,"_Tools");menuItem(toolsMenu,"Word _count","word-count");menuItem(toolsMenu,"_Extensions…","extensions");menuItem(toolsMenu,"_Build a text extension…","build-extension");
         auto help=menu(menubar,"_Help");menuItem(help,"_About RAMD Docs","about");
         editorControls=gtk_box_new(GTK_ORIENTATION_VERTICAL,0);gtk_box_pack_start(GTK_BOX(root),editorControls,false,false,0);
         tabs=gtk_notebook_new();gtk_widget_set_name(tabs,"ribbon");gtk_notebook_set_show_border(GTK_NOTEBOOK(tabs),false);gtk_box_pack_start(GTK_BOX(editorControls),tabs,false,false,0);
@@ -279,6 +372,10 @@ struct App {
         row=toolRow(findGroup);actionButton(row,"edit-redo-symbolic","Redo",".uno:Redo",true);actionButton(row,"edit-select-all-symbolic","Select all",".uno:SelectAll",true);
         auto insertTab=tab("Insert");auto tables=group(insertTab,"Tables");actionButton(toolRow(tables),"view-grid-symbolic","Insert table…","table");
         auto pages=group(insertTab,"Pages");actionButton(toolRow(pages),"document-new-symbolic","Page break",".uno:InsertPagebreak");
+        auto images=group(insertTab,"Images");actionButton(toolRow(images),"insert-image-symbolic","Insert image…","image");
+        auto fields=group(insertTab,"Fields");actionButton(toolRow(fields),"document-properties-symbolic","Page number",".uno:InsertPageNumberField");
+        auto layoutTab=tab("Layout");auto pg=group(layoutTab,"Page layout");actionButton(toolRow(pg),"object-rotate-right-symbolic","Portrait / landscape",".uno:ToggleOrientation");
+        auto extTab=tab("Extensions");auto extGroup=group(extTab,"Workspace extensions");auto er=toolRow(extGroup);actionButton(er,"application-x-addon-symbolic","Manage extensions","extensions");actionButton(er,"document-new-symbolic","Build an extension","build-extension");
         auto viewTab=tab("View");auto viewGroup=group(viewTab,"Zoom");row=toolRow(viewGroup);actionButton(row,"zoom-out-symbolic","Zoom out","zoom-out");actionButton(row,"zoom-original-symbolic","100%","zoom-reset");actionButton(row,"zoom-in-symbolic","Zoom in","zoom-in");
         GError *err=nullptr;auto profile=uri((fs::path(session)/"profile").string());
         view=lok_doc_view_new_from_user_profile(nullptr,profile.c_str(),nullptr,&err);
@@ -287,10 +384,11 @@ struct App {
         gtk_box_pack_start(GTK_BOX(root),scroll,true,true,0);
         auto bottom=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,12);gtk_widget_set_name(bottom,"statusbar");gtk_box_pack_end(GTK_BOX(root),bottom,false,false,0);
         status=gtk_label_new("Start with a blank document or open a Word file.");gtk_box_pack_start(GTK_BOX(bottom),status,true,true,12);gtk_label_set_xalign(GTK_LABEL(status),0);
+        countLabel=gtk_label_new("Words: —");gtk_box_pack_end(GTK_BOX(bottom),countLabel,false,false,8);
         auto zoom=gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL,50,200,10);zoomControl=zoom;gtk_range_set_value(GTK_RANGE(zoom),100);gtk_widget_set_size_request(zoom,180,-1);gtk_scale_set_value_pos(GTK_SCALE(zoom),GTK_POS_LEFT);gtk_box_pack_end(GTK_BOX(bottom),zoom,false,false,8);
         g_signal_connect(zoom,"value-changed",G_CALLBACK((+[](GtkRange *r,gpointer p){auto a=static_cast<App*>(p);if(a->ready)lok_doc_view_set_zoom(LOK_DOC_VIEW(a->view),gtk_range_get_value(r)/100);})),this);
         g_signal_connect(view,"command-result",G_CALLBACK(result),this);
-        g_signal_connect(view,"command-changed",G_CALLBACK((+[](LOKDocView*,gchar *s,gpointer p){auto a=static_cast<App*>(p);std::string text=s?s:"";if(text.rfind(".uno:ModifiedStatus=",0)==0){a->dirty=text.substr(std::string(".uno:ModifiedStatus=").size())=="true";a->title();}for(const auto &item:a->toggles){const auto prefix=item.first+"=";if(text.rfind(prefix,0)==0){a->syncing=true;gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(item.second),text.substr(prefix.size())=="true");a->syncing=false;}}})),this);
+        g_signal_connect(view,"command-changed",G_CALLBACK((+[](LOKDocView*,gchar *s,gpointer p){auto a=static_cast<App*>(p);std::string text=s?s:"";if(text.rfind(".uno:StateWordCount=",0)==0){a->wordCount=text.substr(20);gtk_label_set_text(GTK_LABEL(a->countLabel),a->wordCount.c_str());}if(text.rfind(".uno:ModifiedStatus=",0)==0){a->dirty=text.substr(std::string(".uno:ModifiedStatus=").size())=="true";a->title();}for(const auto &item:a->toggles){const auto prefix=item.first+"=";if(text.rfind(prefix,0)==0){a->syncing=true;gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(item.second),text.substr(prefix.size())=="true");a->syncing=false;}}})),this);
         g_signal_connect(view,"search-not-found",G_CALLBACK((+[](LOKDocView*,gchar*,gpointer p){static_cast<App*>(p)->message("No matching text found.");})),this);
         g_signal_connect(window,"delete-event",G_CALLBACK((+[](GtkWidget*,GdkEvent*,gpointer p)->gboolean{return !static_cast<App*>(p)->canLeave();})),this);
         g_signal_connect(window,"destroy",G_CALLBACK(gtk_main_quit),nullptr);

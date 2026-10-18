@@ -18,18 +18,31 @@ struct Check {
             if(!g_spawn_command_line_sync("xdotool search --name Untitled windowfocus --sync type --clearmodifiers --delay 40 keyboard_input_ok",nullptr,nullptr,nullptr,&err)){g_printerr("Keyboard driver failed: %s\n",err->message);std::exit(1);}
             break;
         }
-        case 1:
+        case 1:{
+            std::ofstream(c->dir+"/test.ramdext.json")<<R"({"format":"ramd-docs-extension-1","name":"Integration extension","description":"Test insertion","text":" EXTENSION_INSERT_OK "})";
+            a->installExtension(c->dir+"/test.ramdext.json");
+            size_t index=0;for(size_t i=0;i<a->extensions.size();++i)if(a->extensions[i].name=="Integration extension")index=i;
+            a->insertExtension(index);
+            a->command(".uno:ToggleOrientation");
+            auto icon=gtk_window_get_icon(GTK_WINDOW(a->window));gdk_pixbuf_save(icon,(c->dir+"/insert.png").c_str(),"png",nullptr,nullptr);
+            a->command(".uno:InsertGraphic",{{"FileName",{"string",uri(c->dir+"/insert.png")}},{"AsLink",{"boolean","false"}}});
+            break;
+        }
+        case 2:a->recoveryCopy();break;
+        case 3:
+            if(!a->filename.empty()||!fs::exists(a->recoveryFile)){g_printerr("Recovery changed path or did not save\n");std::exit(1);}
+            fs::copy_file(a->recoveryFile,c->dir+"/recovery.odt",fs::copy_options::overwrite_existing);
             if(!a->dirty){g_printerr("Editing did not mark document modified\n");std::exit(1);}
             a->savePath(c->dir+"/edited.docx",false);break;
-        case 2:
+        case 4:
             if(a->dirty||!fs::exists(c->dir+"/edited.docx")){g_printerr("DOCX save not confirmed\n");std::exit(1);}
             a->savePath(c->dir+"/edited.pdf",true);break;
-        case 3:
+        case 5:
             if(a->filename!=c->dir+"/edited.docx"){g_printerr("PDF export changed editable document path\n");std::exit(1);}
             a->load(c->dir+"/edited.docx");break;
-        case 4:
+        case 6:
             a->action(".uno:SelectAll");break;
-        case 5:{
+        case 7:{
             gchar *used=nullptr;gchar *text=lok_doc_view_copy_selection(LOK_DOC_VIEW(a->view),"text/plain;charset=utf-8",&used);
             bool ok=text&&std::string(text).find("RAMD_EDITOR_TYPED")!=std::string::npos;
             g_free(used);g_free(text);
@@ -37,7 +50,7 @@ struct Check {
             a->command(".uno:GoToStartOfDoc");
             break;
         }
-        case 6:{
+        case 8:{
             auto win=gtk_widget_get_window(a->window);int w=gtk_widget_get_allocated_width(a->window),h=gtk_widget_get_allocated_height(a->window);
             auto image=gdk_pixbuf_get_from_window(win,0,0,w,h);
             if(image){gdk_pixbuf_save(image,(c->dir+"/editor.png").c_str(),"png",nullptr,nullptr);g_object_unref(image);}
