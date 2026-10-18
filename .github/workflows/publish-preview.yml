@@ -17,26 +17,30 @@ jobs:
           path: package
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ramdro/ramd-docs
-          run-id: 39140091092
+          run-id: 39163953531
       - name: Publish development preview
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ramdro/ramd-docs
         run: |
           cat > notes.md <<'NOTES'
-          RAMD Docs 0.2 is an early development preview by RAMD Studios.
+          RAMD Docs 0.3 is an early development preview by RAMD Studios.
 
           **Supported:** Linux Mint 22.x / Ubuntu 24.04, amd64 (64-bit).
           Download the DEB below; no GitHub account is required.
-          Install with `sudo apt install ./ramd-docs-0.2.0-dev-mint22-amd64.deb`.
+          Install with `sudo apt install ./ramd-docs-0.3.0-dev-mint22-amd64.deb`.
 
-          Redesigned interface with File/Edit/Insert/Format/View/Help menus, grouped Home/Insert/View tabs, a dedicated app icon, symbolic toolbar icons, keyboard shortcuts, formatting state indicators, configurable tables and text clipboard controls.
+          Expanded menus and grouped document tools, image insertion, page orientation, page-number fields, live word count and two-minute recovery copies.
 
-          Embedded LibreOffice Writer engine, formatted document editing, DOCX save/reopen and PDF export. Desktop keyboard input is now tested. Automated engine/editor tests and clean Ubuntu package installation/launch passed in run 39140091092.
+          Tools → Extensions manages bundled and installed text extensions. Tools → Build a text extension creates reusable templates you can share. Bundled tools: Meeting notes, Project brief, Business letter, Today's date. This extension format inserts text; it does not execute scripts or load LibreOffice OXT plugins.
 
-          This is not a finished Word replacement. No autosave/recovery, comments UI or tracked-changes UI yet. Use copies of important documents. Windows, Fedora and macOS installers are not included.
+          File → Open recovery copy reopens a snapshot as a new document. Recovery does not replace normal saving. Changes since the last snapshot can still be lost.
+
+          Automated checks cover desktop keyboard input, DOCX save/reopen, PDF export, extension insertion, embedded image export, landscape layout, recovery content and reopening, extension-manager startup, and installation/launch in clean Ubuntu 24.04. Build run: 39163953531.
+
+          Development preview, not a finished Word replacement. No comments/tracked-changes interface, collaboration, page-margin editor or integrated printing. Use copies of important documents. Windows, Fedora and macOS installers are not included.
           NOTES
           cd package
           sha256sum *.deb > SHA256SUMS.txt
           cd ..
-          gh release create v0.2.0-dev package/*.deb package/SHA256SUMS.txt --target "$GITHUB_SHA" --title 'RAMD Docs 0.2 — Development Preview' --prerelease --notes-file notes.md
+          gh release create v0.3.0-dev package/*.deb package/SHA256SUMS.txt --target "$GITHUB_SHA" --title 'RAMD Docs 0.3 — Development Preview' --prerelease --notes-file notes.md
