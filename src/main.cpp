@@ -201,6 +201,10 @@ struct App {
         else if(id=="recover")recoverDocument();
         else if(id=="recovery-copy")recoveryCopy();
         else if(id=="word-count")showWordCount();
+        else if(id=="meeting-notes")insertExtension(0);
+        else if(id=="project-brief")insertExtension(1);
+        else if(id=="letter")insertExtension(2);
+        else if(id=="date")insertExtension(3);
         else if(id=="copy")clipboard(false);
         else if(id=="cut")clipboard(true);
         else if(id=="paste"){
@@ -253,7 +257,8 @@ struct App {
         }
     }
     void insertExtension(size_t index){
-        if(index>=extensions.size()||!extensions[index].enabled||!ready||busy)return;
+        if(index>=extensions.size()||!ready||busy)return;
+        if(!extensions[index].enabled){message("This extension is disabled. Enable it in Tools → Extensions.");return;}
         auto &e=extensions[index];std::string text=e.text;
         if(e.kind=="date"){auto now=g_date_time_new_now_local();auto s=g_date_time_format(now,"%d %B %Y");text=s;g_free(s);g_date_time_unref(now);}
         if(!lok_doc_view_paste(LOK_DOC_VIEW(view),"text/plain;charset=utf-8",text.c_str(),text.size())){error("The extension text could not be inserted.");return;}
@@ -376,6 +381,7 @@ struct App {
         auto fields=group(insertTab,"Fields");actionButton(toolRow(fields),"document-properties-symbolic","Page number",".uno:InsertPageNumberField");
         auto layoutTab=tab("Layout");auto pg=group(layoutTab,"Page layout");actionButton(toolRow(pg),"object-rotate-right-symbolic","Portrait / landscape",".uno:ToggleOrientation");
         auto extTab=tab("Extensions");auto extGroup=group(extTab,"Workspace extensions");auto er=toolRow(extGroup);actionButton(er,"application-x-addon-symbolic","Manage extensions","extensions");actionButton(er,"document-new-symbolic","Build an extension","build-extension");
+        auto writing=group(extTab,"Writing tools");auto wr=toolRow(writing);actionButton(wr,"view-list-symbolic","Meeting notes","meeting-notes");actionButton(wr,"document-properties-symbolic","Project brief","project-brief");wr=toolRow(writing);actionButton(wr,"mail-message-new-symbolic","Letter","letter");actionButton(wr,"x-office-calendar-symbolic","Today’s date","date");
         auto viewTab=tab("View");auto viewGroup=group(viewTab,"Zoom");row=toolRow(viewGroup);actionButton(row,"zoom-out-symbolic","Zoom out","zoom-out");actionButton(row,"zoom-original-symbolic","100%","zoom-reset");actionButton(row,"zoom-in-symbolic","Zoom in","zoom-in");
         GError *err=nullptr;auto profile=uri((fs::path(session)/"profile").string());
         view=lok_doc_view_new_from_user_profile(nullptr,profile.c_str(),nullptr,&err);

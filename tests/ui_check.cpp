@@ -55,7 +55,24 @@ struct Check {
             auto image=gdk_pixbuf_get_from_window(win,0,0,w,h);
             if(image){gdk_pixbuf_save(image,(c->dir+"/editor.png").c_str(),"png",nullptr,nullptr);g_object_unref(image);}
             std::cout<<"PASS: embedded editor insertion, dirty state, asynchronous DOCX save, PDF export, reopen and selection\n";
-            gtk_widget_destroy(a->window);return G_SOURCE_REMOVE;
+            g_timeout_add(500,[](gpointer data)->gboolean{
+                auto c=static_cast<Check*>(data);auto windows=gtk_window_list_toplevels();
+                for(auto it=windows;it;it=it->next){auto w=GTK_WIDGET(it->data);const char *title=gtk_window_get_title(GTK_WINDOW(w));
+                    if(GTK_IS_DIALOG(w)&&title&&std::string(title)=="Extensions"){
+                        auto pic=gdk_pixbuf_get_from_window(gtk_widget_get_window(w),0,0,gtk_widget_get_allocated_width(w),gtk_widget_get_allocated_height(w));
+                        if(pic){gdk_pixbuf_save(pic,(c->dir+"/extensions.png").c_str(),"png",nullptr,nullptr);g_object_unref(pic);}gtk_dialog_response(GTK_DIALOG(w),GTK_RESPONSE_CLOSE);
+                    }
+                }g_list_free(windows);return G_SOURCE_REMOVE;
+            },c);
+            a->extensionManager();break;
+        }
+        case 9:a->load(c->dir+"/recovery.odt",true);break;
+        case 10:a->command(".uno:SelectAll");break;
+        case 11:{
+            gchar *used=nullptr;auto text=lok_doc_view_copy_selection(LOK_DOC_VIEW(a->view),"text/plain;charset=utf-8",&used);
+            bool ok=text&&std::string(text).find("EXTENSION_INSERT_OK")!=std::string::npos;g_free(text);g_free(used);
+            if(!ok){g_printerr("Recovery copy could not be reopened\n");std::exit(1);}
+            std::cout<<"PASS: extension manager and recovery reopening\n";gtk_widget_destroy(a->window);return G_SOURCE_REMOVE;
         }
         }
         ++c->step;return G_SOURCE_CONTINUE;

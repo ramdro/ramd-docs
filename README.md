@@ -1,95 +1,62 @@
-# RAMD Docs — development preview 0.2
+# RAMD Docs 0.3 — extended development preview
 
-A native document-writing workspace by RAMD Studios, using the real
-LibreOfficeKit document engine. This is an initial source implementation,
-not a finished or validated Word replacement.
+A native document workspace by RAMD Studios, powered by LibreOffice Writer.
+This is an expanded development build, not a finished Microsoft Word replacement.
 
-## Interface in 0.2
-- Dedicated RAMD Docs app icon in the launcher and title bar.
-- File, Edit, Insert, Format, View and Help menus with keyboard shortcuts.
-- Grouped Home, Insert and View tabs; horizontally scrollable tools on small windows.
-- Formatting buttons reflect the engine's bold, italic, underline and alignment state.
-- Configurable table rows/columns and text clipboard controls.
+## Document tools
+- File, Edit, Insert, Format, View, Layout, Tools and Help menus.
+- Grouped Home, Insert, Layout, Extensions and View tabs; dedicated app icon.
+- Open DOCX/ODT/DOC/RTF; save DOCX or existing ODT; export PDF.
+- Fonts, paragraph styles, alignment, lists, indentation and formatting states.
+- Configurable tables, embedded images, page-number fields and orientation.
+- Find, zoom, keyboard shortcuts, text clipboard controls and live word count.
 
-## Implemented in source
-- Embedded Writer canvas with document pagination, typing and selection.
-- Open DOCX, ODT, DOC and RTF.
-- New A4 document; save as DOCX; save existing ODT; export PDF.
-- Paragraph styles, font family/size, bold/italic/underline, alignment,
-  lists, page breaks, configurable table insertion, find and zoom.
-- Unsaved-change prompts and asynchronous save completion handling.
-- Separate temporary LibreOffice profile.
+## Extensions
+Tools → Extensions manages bundled and installed text tools. Tools → Build a
+text extension creates and installs a reusable template. Four tools are included:
+Meeting notes, Project brief, Business letter and Today's date.
+See extensions/README.md and the example JSON. These are declarative text
+extensions, not executable plugins or LibreOffice OXT packages.
 
-Clipboard toolbar/menu actions transfer plain text; formatted content can be opened from DOCX.
+## Recovery
+While a document has unsaved changes, a recovery copy is written every two
+minutes. File → Write recovery copy now writes one immediately. It does not
+save or rename the original document. File → Open recovery copy opens an ODT
+snapshot as a new document; use Save As to keep it.
 
-The interface uses C++ and GTK3 because LibreOffice provides an integrated
-editing widget for GTK3. It does not launch a separate Writer window.
+Snapshots are stored in ~/.local/share/ramd-docs/recovery (or under
+$XDG_DATA_HOME). A normal save or clean exit removes this session's snapshot;
+an interrupted session leaves it for manual recovery through the File menu.
+Changes made since the last successful snapshot can still be lost.
 
-## Build on Mint 22 / Ubuntu 24.04
+## Install (Mint 22.x / Ubuntu 24.04, amd64)
+Download the DEB from the 0.3 development release, then:
 
-    sudo apt update
-    sudo apt install build-essential cmake ninja-build pkg-config libgtk-3-dev libjson-glib-dev libreofficekit-dev liblibreofficekitgtk libreoffice-writer libreoffice-gtk3
+    sudo apt install ./ramd-docs-0.3.0-dev-mint22-amd64.deb
+
+Use copies of important documents while testing. Existing installations are
+upgraded by this command. Windows, Fedora and macOS builds are not provided.
+
+## Build
+    sudo apt install build-essential cmake ninja-build pkg-config libgtk-3-dev libjson-glib-dev libreofficekit-dev liblibreofficekitgtk libreoffice-writer libreoffice-gtk3 adwaita-icon-theme librsvg2-common
     cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
     cmake --build build --parallel 2
     ./build/ramd-docs
 
-An existing document can be passed as the first command-line argument.
+The Linux workflow builds and runs document-engine, editor and clean-package
+installation checks. Its validation artifact includes screenshots and saved
+files. Check the workflow result for the exact revision being downloaded.
+Manual acceptance criteria are in tests/ACCEPTANCE.md.
 
-## Install the development build (Mint 22 / Ubuntu 24.04, amd64)
-Open the latest successful run in this repository's Actions tab and download
-`RAMD-Docs-development-Mint22` under Artifacts. Extract the ZIP, open a terminal
-in that folder, and run:
+## Still limited
+No comments or tracked-changes interface, collaboration, header/footer editor,
+page-margin editor or integrated print dialog. Export PDF for printing.
+Font/style selectors apply formatting but do not always follow the selection.
+Toolbar clipboard actions transfer plain text. Complex Word layouts can differ.
+Save from the close prompt requires closing again after the save completes.
 
-    sudo apt install ./ramd-docs-0.2.0-dev-mint22-amd64.deb
-
-Launch RAMD Docs from the applications menu or run `ramd-docs`.
-This is an early development build; use copies of important documents.
-
-## GitHub build
-Actions compiles the editor, tests the document engine and embedded editor,
-checks desktop startup, and creates a development DEB artifact. The package
-is also installed and launched as a regular user in a clean Ubuntu 24.04
-container to check its declared dependencies. It does not publish a public release.
-
-## Current verification
-GitHub Actions on Ubuntu 24.04 passed compilation and these automated checks:
-- Engine rendering, DOCX/PDF export and DOCX reopening.
-- Embedded editor insertion of formatted text, accents and a table.
-- Modified state, asynchronous DOCX save, PDF export without changing the
-  document path, reopening and selecting the saved text, and normal shutdown.
-- DOCX XML content/table checks and extracted PDF text checks.
-- Desktop startup and DEB creation.
-
-The editor test saves a screenshot in the RAMD-Docs-validation artifact.
-These checks do not cover every toolbar action, physical keyboard interaction,
-complex Word files or all desktop environments. Complete tests/ACCEPTANCE.md
-before treating this as an everyday writing application.
-
-## Current limitations
-- Linux only in this first integration; Windows/Fedora packaging is pending.
-- No recovery/autosave, revision history, comments UI, tracked-change UI,
-  image insertion UI, page-margin UI, header/footer UI or print dialog yet.
-- Font/style selectors apply formatting; selection state is not reflected
-  in every selector yet.
-- Save from the close prompt saves first; close again after it finishes.
-- DOCX import/export uses LibreOffice filters. Layout can differ from Word,
-  especially when the original fonts are unavailable.
-- Keyboard behavior and dialogs still require manual acceptance testing.
-
-## Architecture
-LOKDocView owns rendering and text interaction.
-Formatting is sent through the widget's queued UNO-command interface.
-Open and save operations disable editing while in progress. Save success
-is shown only after the engine's command-result callback reports success.
-Documents are not converted to a limited HTML/QTextEdit representation.
-
-## Licensing
-RAMD source in this repository is supplied for the project owner's development;
-a public source license has not yet been chosen. LibreOfficeKit, GTK and
-their dependencies retain their own licenses. The current package depends
-on system-installed LibreOffice instead of redistributing it. Resolve
-distribution/source obligations before releasing bundled builds.
-
-References:
-- https://docs.libreoffice.org/libreofficekit.html
-- https://github.com/LibreOffice/core/blob/master/include/LibreOfficeKit/LibreOfficeKitGtk.h
+## Architecture and licensing
+C++/GTK3 embeds the official LibreOfficeKit editing widget. Commands are queued
+through its worker interface. Recovery uses a separate ODT copy operation.
+RAMD source has not been assigned a public source license. Dependencies retain
+their own licenses; the DEB uses system packages rather than bundling LibreOffice.

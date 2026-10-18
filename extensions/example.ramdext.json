@@ -1,0 +1,6 @@
+{
+  "format": "ramd-docs-extension-1",
+  "name": "Weekly update",
+  "description": "A reusable weekly status report.",
+  "text": "WEEKLY UPDATE\n\nWeek of: \n\nCompleted\n• \n\nIn progress\n• \n\nBlockers\n• \n\nNext week\n• \n"
+}
