@@ -244,6 +244,7 @@ struct App {
         auto root=gtk_box_new(GTK_ORIENTATION_VERTICAL,0);gtk_container_add(GTK_CONTAINER(window),root);
         auto loader=gdk_pixbuf_loader_new();gdk_pixbuf_loader_write(loader,reinterpret_cast<const guchar*>(appIcon),strlen(appIcon),nullptr);gdk_pixbuf_loader_close(loader,nullptr);
         auto logo=gdk_pixbuf_loader_get_pixbuf(loader);
+        if(!logo)throw std::runtime_error("App icon could not load. Install librsvg2-common.");
         if(logo){gtk_window_set_icon(GTK_WINDOW(window),logo);auto small=gdk_pixbuf_scale_simple(logo,32,32,GDK_INTERP_BILINEAR);auto mark=gtk_image_new_from_pixbuf(small);gtk_header_bar_pack_start(GTK_HEADER_BAR(heading),mark);g_object_unref(small);}g_object_unref(loader);
         auto quick=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,4);gtk_header_bar_pack_start(GTK_HEADER_BAR(heading),quick);
         actionButton(quick,"document-open-symbolic","Open document (Ctrl+O)","open",true);

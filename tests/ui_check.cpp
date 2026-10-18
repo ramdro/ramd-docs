@@ -14,8 +14,8 @@ struct Check {
             const std::string html="<h1>RAMD Docs</h1><p>A real document workspace.</p><p>RAMD_EDITOR_TYPED — café, español.</p><table><tr><td>Project</td><td>Status</td></tr><tr><td>RAMD Docs</td><td>In development</td></tr></table>";
             if(!lok_doc_view_paste(LOK_DOC_VIEW(a->view),"text/html",html.c_str(),html.size())){g_printerr("HTML paste failed\n");std::exit(1);}
             gtk_widget_grab_focus(a->view);
-            for(char ch:std::string("keyboard_input_ok "))
-                gtk_test_widget_send_key(a->view,gdk_unicode_to_keyval(ch),static_cast<GdkModifierType>(0));
+            GError *err=nullptr;
+            if(!g_spawn_command_line_sync("xdotool search --name Untitled windowfocus --sync type --clearmodifiers --delay 40 keyboard_input_ok",nullptr,nullptr,nullptr,&err)){g_printerr("Keyboard driver failed: %s\n",err->message);std::exit(1);}
             break;
         }
         case 1:

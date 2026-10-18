@@ -1,17 +1,26 @@
-# RAMD Docs — development source 0.1
+# RAMD Docs — development preview 0.2
 
 A native document-writing workspace by RAMD Studios, using the real
 LibreOfficeKit document engine. This is an initial source implementation,
 not a finished or validated Word replacement.
+
+## Interface in 0.2
+- Dedicated RAMD Docs app icon in the launcher and title bar.
+- File, Edit, Insert, Format, View and Help menus with keyboard shortcuts.
+- Grouped Home, Insert and View tabs; horizontally scrollable tools on small windows.
+- Formatting buttons reflect the engine's bold, italic, underline and alignment state.
+- Configurable table rows/columns and text clipboard controls.
 
 ## Implemented in source
 - Embedded Writer canvas with document pagination, typing and selection.
 - Open DOCX, ODT, DOC and RTF.
 - New A4 document; save as DOCX; save existing ODT; export PDF.
 - Paragraph styles, font family/size, bold/italic/underline, alignment,
-  lists, page breaks, fixed 3×3 table insertion, find and zoom.
+  lists, page breaks, configurable table insertion, find and zoom.
 - Unsaved-change prompts and asynchronous save completion handling.
 - Separate temporary LibreOffice profile.
+
+Clipboard toolbar/menu actions transfer plain text; formatted content can be opened from DOCX.
 
 The interface uses C++ and GTK3 because LibreOffice provides an integrated
 editing widget for GTK3. It does not launch a separate Writer window.
@@ -31,7 +40,7 @@ Open the latest successful run in this repository's Actions tab and download
 `RAMD-Docs-development-Mint22` under Artifacts. Extract the ZIP, open a terminal
 in that folder, and run:
 
-    sudo apt install ./ramd-docs-0.1.0-dev-mint22-amd64.deb
+    sudo apt install ./ramd-docs-0.2.0-dev-mint22-amd64.deb
 
 Launch RAMD Docs from the applications menu or run `ramd-docs`.
 This is an early development build; use copies of important documents.

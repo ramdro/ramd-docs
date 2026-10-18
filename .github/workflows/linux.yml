@@ -13,7 +13,7 @@ jobs:
       - name: Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ pkg-config libgtk-3-dev libjson-glib-dev libreofficekit-dev liblibreofficekitgtk libreoffice-writer libreoffice-gtk3 xvfb xauth fonts-liberation poppler-utils desktop-file-utils
+          sudo apt-get install -y cmake ninja-build g++ pkg-config libgtk-3-dev libjson-glib-dev libreofficekit-dev liblibreofficekitgtk libreoffice-writer libreoffice-gtk3 xvfb xauth fonts-liberation poppler-utils desktop-file-utils adwaita-icon-theme librsvg2-common xdotool
       - name: Build
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=/usr
