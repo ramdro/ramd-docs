@@ -17,24 +17,26 @@ jobs:
           path: package
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ramdro/ramd-docs
-          run-id: 39137189446
+          run-id: 39140091092
       - name: Publish development preview
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ramdro/ramd-docs
         run: |
           cat > notes.md <<'NOTES'
-          RAMD Docs 0.1 is an early development preview by RAMD Studios.
+          RAMD Docs 0.2 is an early development preview by RAMD Studios.
 
           **Supported:** Linux Mint 22.x / Ubuntu 24.04, amd64 (64-bit).
           Download the DEB below; no GitHub account is required.
-          Install with `sudo apt install ./ramd-docs-0.1.0-dev-mint22-amd64.deb`.
+          Install with `sudo apt install ./ramd-docs-0.2.0-dev-mint22-amd64.deb`.
 
-          Embedded LibreOffice Writer engine, formatted document editing, DOCX save/reopen and PDF export. Automated engine/editor tests and clean Ubuntu package installation/launch passed in run 39137189446.
+          Redesigned interface with File/Edit/Insert/Format/View/Help menus, grouped Home/Insert/View tabs, a dedicated app icon, symbolic toolbar icons, keyboard shortcuts, formatting state indicators, configurable tables and text clipboard controls.
+
+          Embedded LibreOffice Writer engine, formatted document editing, DOCX save/reopen and PDF export. Desktop keyboard input is now tested. Automated engine/editor tests and clean Ubuntu package installation/launch passed in run 39140091092.
 
           This is not a finished Word replacement. No autosave/recovery, comments UI or tracked-changes UI yet. Use copies of important documents. Windows, Fedora and macOS installers are not included.
           NOTES
           cd package
           sha256sum *.deb > SHA256SUMS.txt
           cd ..
-          gh release create v0.1.0-dev package/*.deb package/SHA256SUMS.txt --target 0e7ed72202bfd1f66ecbe71717d1ce0d1e77dad9 --title 'RAMD Docs 0.1 — Development Preview' --prerelease --notes-file notes.md
+          gh release create v0.2.0-dev package/*.deb package/SHA256SUMS.txt --target f2d5b8139f4bfa2d2f36ef731aefe3368b6fb033 --title 'RAMD Docs 0.2 — Development Preview' --prerelease --notes-file notes.md
