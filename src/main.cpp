@@ -12,6 +12,7 @@
 #include "icon.h"
 #include <cstring>
 namespace fs = std::filesystem;
+#include "windows_platform.h"
 using Fields = std::vector<std::pair<std::string,std::pair<std::string,std::string>>>;
 static std::string arguments(const Fields &fields) {
     JsonBuilder *b=json_builder_new();json_builder_begin_object(b);
@@ -29,7 +30,7 @@ static std::string arguments(const Fields &fields) {
     json_generator_set_root(gen,root);gchar *data=json_generator_to_data(gen,nullptr);
     std::string out=data;g_free(data);json_node_free(root);g_object_unref(gen);g_object_unref(b);return out;
 }
-static std::string uri(const std::string &path){gchar *p=g_filename_to_uri(fs::absolute(path).c_str(),nullptr,nullptr);std::string out=p?p:"";g_free(p);return out;}
+static std::string uri(const std::string &path){gchar *p=g_filename_to_uri(fs::absolute(path).string().c_str(),nullptr,nullptr);std::string out=p?p:"";g_free(p);return out;}
 static const char *blank=R"(<?xml version="1.0" encoding="UTF-8"?>
 <office:document xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
 xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
@@ -215,7 +216,7 @@ struct App {
         else if(id=="zoom-in")gtk_range_set_value(GTK_RANGE(zoomControl),gtk_range_get_value(GTK_RANGE(zoomControl))+10);
         else if(id=="zoom-out")gtk_range_set_value(GTK_RANGE(zoomControl),gtk_range_get_value(GTK_RANGE(zoomControl))-10);
         else if(id=="zoom-reset")gtk_range_set_value(GTK_RANGE(zoomControl),100);
-        else if(id=="about")gtk_show_about_dialog(GTK_WINDOW(window),"program-name","RAMD Docs","version","0.3 Preview","logo-icon-name","ramd-docs","comments","A document workspace by RAMD Studios.\nPowered by LibreOfficeKit.\nDevelopment preview with two-minute recovery copies.",nullptr);
+        else if(id=="about")gtk_show_about_dialog(GTK_WINDOW(window),"program-name","RAMD Docs","version","1.0","logo-icon-name","ramd-docs","comments","A document workspace by RAMD Studios.\nPowered by LibreOfficeKit.\nIncludes two-minute recovery copies and text extensions.",nullptr);
         else command(id);
     }
     void bindAction(GtkWidget *w,const char *signal,const char *id,const char *shortcut=nullptr){
@@ -314,7 +315,7 @@ struct App {
         setBusy(true);message("Writing recovery copy…");lok_doc_view_post_command(LOK_DOC_VIEW(view),pendingCommand.c_str(),args.c_str(),true);
     }
     void recoverDocument(){
-        if(!canLeave())return;auto path=pickFile("Open a recovery copy","*.odt",false,recoveryDir.c_str());if(path.empty())return;dirty=false;load(path,true);
+        if(!canLeave())return;auto path=pickFile("Open a recovery copy","*.odt",false,recoveryDir.string().c_str());if(path.empty())return;dirty=false;load(path,true);
     }
     void insertImage(){
         if(!ready||busy)return;auto path=pickFile("Insert image (PNG or JPEG)","*");if(path.empty())return;
@@ -334,7 +335,7 @@ struct App {
         accels=gtk_accel_group_new();gtk_window_add_accel_group(GTK_WINDOW(window),accels);g_object_unref(accels);
         heading=gtk_header_bar_new();gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(heading),true);
         gtk_header_bar_set_title(GTK_HEADER_BAR(heading),"RAMD Docs");
-        gtk_header_bar_set_subtitle(GTK_HEADER_BAR(heading),"RAMD Docs · Preview 0.3");
+        gtk_header_bar_set_subtitle(GTK_HEADER_BAR(heading),"RAMD Docs 1.0");
         gtk_window_set_titlebar(GTK_WINDOW(window),heading);
         auto root=gtk_box_new(GTK_ORIENTATION_VERTICAL,0);gtk_container_add(GTK_CONTAINER(window),root);
         auto loader=gdk_pixbuf_loader_new();gdk_pixbuf_loader_write(loader,reinterpret_cast<const guchar*>(appIcon),strlen(appIcon),nullptr);gdk_pixbuf_loader_close(loader,nullptr);
@@ -384,7 +385,12 @@ struct App {
         auto writing=group(extTab,"Writing tools");auto wr=toolRow(writing);actionButton(wr,"view-list-symbolic","Meeting notes","meeting-notes");actionButton(wr,"document-properties-symbolic","Project brief","project-brief");wr=toolRow(writing);actionButton(wr,"mail-message-new-symbolic","Letter","letter");actionButton(wr,"x-office-calendar-symbolic","Today’s date","date");
         auto viewTab=tab("View");auto viewGroup=group(viewTab,"Zoom");row=toolRow(viewGroup);actionButton(row,"zoom-out-symbolic","Zoom out","zoom-out");actionButton(row,"zoom-original-symbolic","100%","zoom-reset");actionButton(row,"zoom-in-symbolic","Zoom in","zoom-in");
         GError *err=nullptr;auto profile=uri((fs::path(session)/"profile").string());
+        #ifdef _WIN32
+        auto officePath=windowsOfficePath();
+        view=lok_doc_view_new_from_user_profile(officePath.c_str(),profile.c_str(),nullptr,&err);
+#else
         view=lok_doc_view_new_from_user_profile(nullptr,profile.c_str(),nullptr,&err);
+#endif
         if(!view){std::string msg=err?err->message:"LibreOfficeKit could not start";g_clear_error(&err);throw std::runtime_error(msg);}
         auto scroll=gtk_scrolled_window_new(nullptr,nullptr);gtk_container_add(GTK_CONTAINER(scroll),view);
         gtk_box_pack_start(GTK_BOX(root),scroll,true,true,0);
@@ -427,7 +433,7 @@ scale highlight{background:#7160b5}scale slider{background:#fff;border:1px solid
 };
 #ifndef RAMD_DOCS_NO_MAIN
 int runApp(int argc,char **argv){
-    gtk_init(&argc,&argv);g_set_application_name("RAMD Docs");
+    prepareWindowsRuntime();gtk_init(&argc,&argv);g_set_application_name("RAMD Docs");
     try{App a;if(argc>1)a.load(fs::absolute(argv[1]).string());else a.newDocument();gtk_main();}
     catch(const std::exception &e){g_printerr("RAMD Docs: %s\n",e.what());return 1;}
     return 0;

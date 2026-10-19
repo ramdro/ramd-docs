@@ -1,6 +1,9 @@
 #define RAMD_DOCS_NO_MAIN
 #include "../src/main.cpp"
 #include <iostream>
+#ifdef _WIN32
+#include <gdk/gdkwin32.h>
+#endif
 struct Check {
     App *app;
     std::string dir;
@@ -14,8 +17,13 @@ struct Check {
             const std::string html="<h1>RAMD Docs</h1><p>A real document workspace.</p><p>RAMD_EDITOR_TYPED — café, español.</p><table><tr><td>Project</td><td>Status</td></tr><tr><td>RAMD Docs</td><td>In development</td></tr></table>";
             if(!lok_doc_view_paste(LOK_DOC_VIEW(a->view),"text/html",html.c_str(),html.size())){g_printerr("HTML paste failed\n");std::exit(1);}
             gtk_widget_grab_focus(a->view);
+#ifdef _WIN32
+            auto handle=(HWND)gdk_win32_window_get_handle(gtk_widget_get_window(a->window));SetForegroundWindow(handle);SetFocus(handle);
+            for(wchar_t ch:std::wstring(L"keyboard_input_ok")){INPUT events[2]{};events[0].type=events[1].type=INPUT_KEYBOARD;events[0].ki.wScan=events[1].ki.wScan=ch;events[0].ki.dwFlags=KEYEVENTF_UNICODE;events[1].ki.dwFlags=KEYEVENTF_UNICODE|KEYEVENTF_KEYUP;SendInput(2,events,sizeof(INPUT));}
+#else
             GError *err=nullptr;
             if(!g_spawn_command_line_sync("xdotool search --name Untitled windowfocus --sync type --clearmodifiers --delay 40 keyboard_input_ok",nullptr,nullptr,nullptr,&err)){g_printerr("Keyboard driver failed: %s\n",err->message);std::exit(1);}
+#endif
             break;
         }
         case 1:{
@@ -79,7 +87,7 @@ struct Check {
     }
 };
 int runCheck(int argc,char **argv){
-    gtk_init(&argc,&argv);if(argc!=2)return 2;
+    prepareWindowsRuntime();gtk_init(&argc,&argv);if(argc!=2)return 2;
     fs::create_directories(argv[1]);App a;a.testing=true;
     Check c{&a,fs::absolute(argv[1]).string()};a.newDocument();
     g_timeout_add(500,Check::tick,&c);gtk_main();return 0;

@@ -11,7 +11,7 @@ static std::string jsonString(JsonObject *o,const char *key){if(!json_object_has
 static Extension readExtension(const fs::path &path){
  if(fs::file_size(path)>65536)throw std::runtime_error("Extension exceeds 64 KB.");
  auto parser=json_parser_new();GError *err=nullptr;
- if(!json_parser_load_from_file(parser,path.c_str(),&err)){std::string msg=err?err->message:"Invalid extension JSON";g_clear_error(&err);g_object_unref(parser);throw std::runtime_error(msg);}
+ if(!json_parser_load_from_file(parser,path.string().c_str(),&err)){std::string msg=err?err->message:"Invalid extension JSON";g_clear_error(&err);g_object_unref(parser);throw std::runtime_error(msg);}
  Extension e;
  try{auto root=json_parser_get_root(parser);if(!JSON_NODE_HOLDS_OBJECT(root))throw std::runtime_error("Extension must be a JSON object.");auto o=json_node_get_object(root);
  if(jsonString(o,"format")!="ramd-docs-extension-1")throw std::runtime_error("Unsupported extension format.");

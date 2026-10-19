@@ -1,0 +1,58 @@
+name: Windows native editor
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['src/**', 'tests/**', 'CMakeLists.txt', 'ci/**', '.github/workflows/windows.yml']
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LibreOffice engine
+        shell: pwsh
+        run: |
+          choco install libreoffice-fresh -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Engine installation failed' }
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-gtk3
+            mingw-w64-ucrt-x86_64-json-glib
+            mingw-w64-ucrt-x86_64-boost
+            mingw-w64-ucrt-x86_64-librsvg
+            mingw-w64-ucrt-x86_64-adwaita-icon-theme
+            mingw-w64-ucrt-x86_64-python
+      - name: Build editor with standalone GTK widget
+        shell: msys2 {0}
+        run: |
+          python ci/prepare_windows_lok.py
+          cmake -S . -B build-windows -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-windows --parallel 2
+      - name: Exercise actual Windows editor
+        shell: pwsh
+        run: |
+          $env:PATH = "C:\msys64\ucrt64\bin;C:\Program Files\LibreOffice\program;$env:PATH"
+          $env:GDK_BACKEND = 'win32'
+          $out="$PWD\windows-editor-output"
+          $process=Start-Process "$PWD\build-windows\ui-check.exe" -ArgumentList ('"'+$out+'"') -PassThru -RedirectStandardOutput windows-ui-out.log -RedirectStandardError windows-ui-err.log
+          if (!$process.WaitForExit(90000)) { $process.Kill(); throw 'Editor test timed out' }
+          Get-Content windows-ui-out.log,windows-ui-err.log
+          if ($process.ExitCode -ne 0) { throw "Editor failed: $($process.ExitCode)" }
+          python tests/check_ui_outputs.py windows-editor-output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Windows-editor-validation
+          path: |
+            windows-editor-output/*
+            windows-ui-*.log

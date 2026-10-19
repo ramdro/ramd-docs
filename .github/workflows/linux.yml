@@ -1,4 +1,4 @@
-name: Build RAMD Docs development package
+name: Build RAMD Docs Mint package
 on:
   push:
   workflow_dispatch:
@@ -39,15 +39,15 @@ jobs:
           set -e
           cat build/launch.log
           test "$code" -eq 124
-      - name: Development DEB
+      - name: Release DEB
         working-directory: build
-        run: cpack -G DEB -D CPACK_PACKAGE_FILE_NAME=ramd-docs-0.3.0-dev-mint22-amd64
+        run: cpack -G DEB -D CPACK_PACKAGE_FILE_NAME=ramd-docs-1.0.0-mint22-amd64
       - name: Install package in clean Ubuntu 24.04
         run: |
           docker run --rm -v "$PWD/build:/packages:ro" ubuntu:24.04 bash -ec '
             export DEBIAN_FRONTEND=noninteractive
             apt-get update
-            apt-get install -y /packages/ramd-docs-0.3.0-dev-mint22-amd64.deb xvfb xauth
+            apt-get install -y /packages/ramd-docs-1.0.0-mint22-amd64.deb xvfb xauth
             test -f /usr/share/applications/ramd-docs.desktop
             ldd /usr/bin/ramd-docs > /tmp/dependencies.txt
             if grep -q "not found" /tmp/dependencies.txt; then cat /tmp/dependencies.txt; exit 1; fi
@@ -61,7 +61,7 @@ jobs:
           '
       - uses: actions/upload-artifact@v4
         with:
-          name: RAMD-Docs-development-Mint22
+          name: RAMD-Docs-Mint22
           path: build/*.deb
       - uses: actions/upload-artifact@v4
         if: always()
