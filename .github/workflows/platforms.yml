@@ -1,0 +1,94 @@
+name: Fedora packages and Windows engine validation
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['src/**', 'tests/**', 'CMakeLists.txt', '.github/workflows/platforms.yml']
+permissions:
+  contents: read
+jobs:
+  fedora:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [43, 44]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test RPM
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src fedora:${{ matrix.version }} bash -ec '
+            dnf install -y gcc-c++ cmake ninja-build pkgconf-pkg-config gtk3-devel json-glib-devel libreofficekit-devel libreoffice-writer libreoffice-gtk3 adwaita-icon-theme librsvg2-tools liberation-fonts xorg-x11-server-Xvfb xorg-x11-xauth xdotool python3 poppler-utils desktop-file-utils rpm-build
+            builddir=build-fedora-${{ matrix.version }}
+            cmake -S . -B "$builddir" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+            cmake --build "$builddir" --parallel 2
+            desktop-file-validate packaging/ramd-docs.desktop
+            SAL_USE_VCLPLUGIN=svp "$builddir/engine-check" /usr/lib64/libreoffice/program file:///tmp/ramd-engine-profile "$PWD/$builddir/roundtrip"
+            python3 tests/check_outputs.py "$builddir/roundtrip"
+            xvfb-run -a timeout 60s "$builddir/ui-check" "$PWD/$builddir/editor-check"
+            python3 tests/check_ui_outputs.py "$builddir/editor-check"
+            pdftotext "$builddir/editor-check/edited.pdf" "$builddir/editor-check/pdf.txt"
+            grep -q EXTENSION_INSERT_OK "$builddir/editor-check/pdf.txt"
+            cd "$builddir"
+            cpack -G RPM -D CPACK_PACKAGE_FILE_NAME=ramd-docs-1.0.0-fedora${{ matrix.version }}-x86_64
+          '
+      - name: Install and launch in a clean Fedora container
+        run: |
+          docker run --rm -v "$PWD/build-fedora-${{ matrix.version }}:/packages:ro" fedora:${{ matrix.version }} bash -ec '
+            dnf install -y /packages/*.rpm xorg-x11-server-Xvfb xorg-x11-xauth
+            useradd -m tester
+            set +e
+            runuser -u tester -- xvfb-run -a timeout 12s /usr/bin/ramd-docs >/tmp/launch.log 2>&1
+            code=$?
+            set -e
+            cat /tmp/launch.log
+            test "$code" -eq 124
+          '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RAMD-Docs-Fedora-${{ matrix.version }}
+          path: build-fedora-${{ matrix.version }}/*.rpm
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Fedora-${{ matrix.version }}-validation
+          path: |
+            build-fedora-${{ matrix.version }}/roundtrip/*
+            build-fedora-${{ matrix.version }}/editor-check/*
+  windows-engine:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Install document engine
+        shell: pwsh
+        run: |
+          choco install libreoffice-fresh -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'LibreOffice installation failed' }
+      - name: Build and run native engine test
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force include/LibreOfficeKit | Out-Null
+          foreach ($file in @('LibreOfficeKit.h','LibreOfficeKit.hxx','LibreOfficeKitInit.h','LibreOfficeKitEnums.h','LibreOfficeKitTypes.h')) {
+            Invoke-WebRequest "https://raw.githubusercontent.com/LibreOffice/core/libreoffice-24.2.7.2/include/LibreOfficeKit/$file" -OutFile "include/LibreOfficeKit/$file"
+          }
+          cl /EHsc /std:c++17 /Iinclude tests/engine_check.cpp /Fe:engine-check.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Engine test build failed' }
+          $program = 'C:\Program Files\LibreOffice\program'
+          $env:PATH = "$program;$env:PATH"
+          $profile = ([uri]"$env:TEMP\ramd-engine-profile").AbsoluteUri
+          $out = "$PWD\windows-engine-output"
+          $process = Start-Process -FilePath "$PWD\engine-check.exe" -ArgumentList @(('"'+$program+'"'),$profile,('"'+$out+'"')) -PassThru -RedirectStandardOutput engine-out.log -RedirectStandardError engine-err.log
+          if (!$process.WaitForExit(90000)) { $process.Kill(); throw 'Native engine test timed out' }
+          Get-Content engine-out.log,engine-err.log
+          if ($process.ExitCode -ne 0) { throw "Native engine failed with $($process.ExitCode)" }
+          python tests/check_outputs.py windows-engine-output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Windows-engine-validation
+          path: |
+            windows-engine-output/*
+            engine-*.log
