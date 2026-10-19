@@ -32,16 +32,20 @@ jobs:
             mingw-w64-ucrt-x86_64-librsvg
             mingw-w64-ucrt-x86_64-adwaita-icon-theme
             mingw-w64-ucrt-x86_64-python
+      - name: Build Windows application icon
+        shell: pwsh
+        run: magick -background none packaging/ramd-docs.svg -define icon:auto-resize=64,48,32,16 packaging/ramd-docs.ico
       - name: Build editor with standalone GTK widget
         shell: msys2 {0}
         run: |
+          echo "RAMD_RUNTIME_BIN=$(cygpath -w /ucrt64/bin)" >> "$GITHUB_ENV"
           python ci/prepare_windows_lok.py
           cmake -S . -B build-windows -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build-windows --parallel 2
       - name: Exercise actual Windows editor
         shell: pwsh
         run: |
-          $env:PATH = "C:\msys64\ucrt64\bin;C:\Program Files\LibreOffice\program;$env:PATH"
+          $env:PATH = "${env:RAMD_RUNTIME_BIN};C:\Program Files\LibreOffice\program;$env:PATH"
           $env:GDK_BACKEND = 'win32'
           $out="$PWD\windows-editor-output"
           $process=Start-Process "$PWD\build-windows\ui-check.exe" -ArgumentList ('"'+$out+'"') -PassThru -RedirectStandardOutput windows-ui-out.log -RedirectStandardError windows-ui-err.log
@@ -49,6 +53,38 @@ jobs:
           Get-Content windows-ui-out.log,windows-ui-err.log
           if ($process.ExitCode -ne 0) { throw "Editor failed: $($process.ExitCode)" }
           python tests/check_ui_outputs.py windows-editor-output
+      - name: Bundle runtime dependencies
+        shell: msys2 {0}
+        run: python ci/bundle_windows.py
+      - name: Test bundled editor without build-tool paths
+        shell: pwsh
+        run: |
+          $env:PATH="$env:SystemRoot\System32;$env:SystemRoot"
+          $out="$PWD\windows-bundle-output"
+          $process=Start-Process "$PWD\windows-dist\ui-check.exe" -ArgumentList ('"'+$out+'"') -PassThru -RedirectStandardOutput bundle-out.log -RedirectStandardError bundle-err.log
+          if (!$process.WaitForExit(90000)) { $process.Kill(); throw 'Bundled editor timed out' }
+          Get-Content bundle-out.log,bundle-err.log
+          if ($process.ExitCode -ne 0) { throw "Bundled editor failed: $($process.ExitCode)" }
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' ci/windows-installer.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+      - name: Install and launch packaged app
+        shell: pwsh
+        run: |
+          $installer=Get-Item release-windows/*.exe
+          $proc=Start-Process $installer.FullName -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -PassThru -Wait
+          if ($proc.ExitCode -ne 0) { throw 'Installer failed' }
+          $env:PATH="$env:SystemRoot\System32;$env:SystemRoot"
+          $app=Start-Process 'C:\Program Files\RAMD Docs\ramd-docs.exe' -PassThru
+          Start-Sleep -Seconds 12
+          if ($app.HasExited) { throw "Installed app exited: $($app.ExitCode)" }
+          $app.Kill()
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RAMD-Docs-Windows
+          path: release-windows/*.exe
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -56,3 +92,5 @@ jobs:
           path: |
             windows-editor-output/*
             windows-ui-*.log
+            windows-bundle-output/*
+            bundle-*.log

@@ -12,7 +12,7 @@ for name in ['lokdocview.cxx','tilebuffer.cxx','tilebuffer.hxx']:
  get('libreofficekit/source/gtk/'+name,name)
 keys=get('offapi/com/sun/star/awt/Key.idl','upstream/Key.idl')
 get('include/vcl/keycodes.hxx','upstream/keycodes.hxx');get('include/vcl/event.hxx','upstream/event.hxx')
-get('COPYING.MPL','COPYING.MPL');get('NOTICE','NOTICE')
+get('COPYING.MPL','COPYING.MPL')
 # The widget uses only fixed-width scalar types and protocol key/mouse constants
 # from these internal headers. No LibreOffice C++ ABI is linked.
 compat='''#pragma once
